@@ -1,0 +1,16 @@
+__pycache__/
+*.log
+*.csv
+*.txt
+*.bag
+
+data_1/
+data_2/
+data_3/
+devel/
+rgbl/
+rgbr/
+sdl/
+sdr/
+build/
+.
