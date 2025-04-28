@@ -51,10 +51,21 @@ void logAccelData(const ros::Time& timestamp, const geometry_msgs::TwistStamped:
 void logPoseData(const ros::Time& timestamp, const geometry_msgs::PoseStamped::ConstPtr& pose_msg) {
     std::ofstream pose_file("/home/mingtao/Gt_ws/gt_pose.txt", std::ios_base::app);
     if (pose_file.is_open()) {
-        pose_file << std::fixed << std::setprecision(9) << timestamp.toSec() << ", "
-                  << pose_msg->pose.position.x << ", " << pose_msg->pose.position.y << ", " << pose_msg->pose.position.z << ", "
-                  << pose_msg->pose.orientation.x << ", " << pose_msg->pose.orientation.y << ", "
-                  << pose_msg->pose.orientation.z << ", " << pose_msg->pose.orientation.w << std::endl;
+        pose_file << std::fixed << std::setprecision(9) << timestamp.toSec() << " "
+                  << pose_msg->pose.position.x << " " << pose_msg->pose.position.y << " " << pose_msg->pose.position.z << " "
+                  << pose_msg->pose.orientation.x << " " << pose_msg->pose.orientation.y << " "
+                  << pose_msg->pose.orientation.z << " " << pose_msg->pose.orientation.w << std::endl;
+        pose_file.close();
+    }
+}
+
+void logdogPoseData(const ros::Time& timestamp, const geometry_msgs::PoseStamped::ConstPtr& pose_msg) {
+    std::ofstream pose_file("/home/mingtao/Gt_ws/gt_dog_pose.txt", std::ios_base::app);
+    if (pose_file.is_open()) {
+        pose_file << std::fixed << std::setprecision(9) << timestamp.toSec() << " "
+                  << pose_msg->pose.position.x << " " << pose_msg->pose.position.y << " " << pose_msg->pose.position.z << " "
+                  << pose_msg->pose.orientation.x << " " << pose_msg->pose.orientation.y << " "
+                  << pose_msg->pose.orientation.z << " " << pose_msg->pose.orientation.w << std::endl;
         pose_file.close();
     }
 }
@@ -74,8 +85,8 @@ void logImuData(const ros::Time& timestamp, const sensor_msgs::Imu::ConstPtr& im
     std::ofstream imu_file("/home/mingtao/Gt_ws/Imu.txt", std::ios_base::app);
     if (imu_file.is_open()) {
         imu_file << std::fixed << std::setprecision(9) << timestamp.toSec() << ", "
-                 << imu_msg->linear_acceleration.x << ", " << imu_msg->linear_acceleration.y << ", " << imu_msg->linear_acceleration.z << ", "
-                 << imu_msg->angular_velocity.x << ", " << imu_msg->angular_velocity.y << ", " << imu_msg->angular_velocity.z << std::endl;
+                 << imu_msg->angular_velocity.x << ", " << imu_msg->angular_velocity.y << ", " << imu_msg->angular_velocity.z << ", "
+                 << imu_msg->linear_acceleration.x << ", " << imu_msg->linear_acceleration.y << ", " << imu_msg->linear_acceleration.z << std::endl;
         imu_file.close();
     }
 }
@@ -94,6 +105,11 @@ void processVrpnMessage(const std::string& topic, const rosbag::MessageInstance&
         geometry_msgs::PoseStamped::ConstPtr pose_msg = msg.instantiate<geometry_msgs::PoseStamped>();
         if (pose_msg) {
             logPoseData(timestamp, pose_msg);
+        }
+    }else if (topic == "/vrpn_client_node/dog/pose") {
+        geometry_msgs::PoseStamped::ConstPtr pose_msg = msg.instantiate<geometry_msgs::PoseStamped>();
+        if (pose_msg) {
+            logdogPoseData(timestamp, pose_msg);
         }
     } else if (topic == "/vrpn_client_node/Tracker0/twist") {
         geometry_msgs::TwistStamped::ConstPtr twist_msg = msg.instantiate<geometry_msgs::TwistStamped>();
@@ -116,17 +132,20 @@ void processSDImage(const cv::Mat& image, const std::string& topic,
                     const cv::Mat& map1_right, const cv::Mat& map2_right) {
     cv::Mat map1, map2;
     std::string folder_path;
+    std::string noise_path;
 
     static int frame_count_left_sd = 0;
     static int frame_count_right_sd = 0;
     int* frame_count = nullptr;
 
     if (topic == "/camera/left/sd") {
+        noise_path = "/home/mingtao/Gt_ws/noise/sdl/frame_0.xml";
         folder_path = "/home/mingtao/Gt_ws/sdl";
         map1 = map1_left;
         map2 = map2_left;
         frame_count = &frame_count_left_sd;
     } else if (topic == "/camera/right/sd") {
+        noise_path = "/home/mingtao/Gt_ws/noise/sdr/frame_0.xml";
         folder_path = "/home/mingtao/Gt_ws/sdr";
         map1 = map1_right;
         map2 = map2_right;
@@ -138,15 +157,39 @@ void processSDImage(const cv::Mat& image, const std::string& topic,
         return;
     }
 
+    cv::Mat noise_image;
+    cv::FileStorage fs_n(noise_path, cv::FileStorage::READ);
+    if (!fs_n.isOpened()) {
+        ROS_ERROR("Failed to open the XML file: %s", noise_path.c_str());
+        return;
+    }
+
+    // 读取图像数据
+    cv::Mat temp;
+    fs_n["image"] >> temp;  // 从 XML 中读取图像矩阵
+
+    if (temp.empty()) {
+        ROS_ERROR("Error reading the image data from XML.");
+        return;
+    }
+
+    // 检查噪声图像和输入图像的大小是否匹配
+    if (temp.size() != image.size()) {
+        ROS_ERROR("Noise image size does not match input image size.");
+        return;
+    }
+
+    // 将噪声图像从 CV_32F 减去（假设输入图像是 CV_32F）
     cv::Mat processed_image = image.clone();
+    processed_image -= temp; // 将噪声图像从原图中减去
     cv::flip(processed_image, processed_image, 1);
     cv::resize(processed_image, processed_image, cv::Size(320, 160), cv::INTER_LINEAR);
 
-    double lowThreshold1 = -120;
-    double highThreshold1 = -2;
+    double lowThreshold1 = -129;
+    double highThreshold1 = -0;
 
-    double lowThreshold2 = 2;
-    double highThreshold2 = 120;
+    double lowThreshold2 = 0;
+    double highThreshold2 = 129;
 
     cv::Mat mask1, mask2;
     cv::inRange(processed_image, lowThreshold1, highThreshold1, mask1);
@@ -158,15 +201,29 @@ void processSDImage(const cv::Mat& image, const std::string& topic,
     cv::Mat filtered;
     processed_image.copyTo(filtered, combinedMask);
 
-    // double minVal;
-    // cv::minMaxLoc(filtered, &minVal, nullptr);
+    double minVal, maxVal;
+    cv::minMaxLoc(processed_image, &minVal, &maxVal);
 
-    // cv::Mat minMat = cv::Mat::ones(filtered.size(), filtered.type()) * static_cast<uchar>(minVal); 
-    // cv::add(filtered, minMat, filtered);
+    std::cout << "Min Value: " << minVal << std::endl;
+    std::cout << "Max Value: " << maxVal << std::endl;
 
-    filtered = (filtered + 70) * 1.8;
+    filtered = (filtered + 50) * 3;
+    // cv::Mat kernel = (cv::Mat_<float>(3, 3) <<
+    //                    0, -1, 0,
+    //                    -1, 5,-1,
+    //                    0, -1, 0);  // 锐化滤波器
+
+    // // 应用锐化滤波器
+    // cv::filter2D(filtered, filtered, -1, kernel);
     filtered.convertTo(filtered, CV_8UC1);
     cv::remap(filtered, filtered, map1, map2, cv::INTER_LINEAR);
+
+    //////////////////////////////////// Noise Images ////////////////////////////////
+    // std::string filename_noise = folder_path + "/frame_" + std::to_string((*frame_count)++) + ".xml";
+    // cv::FileStorage fs(filename_noise, cv::FileStorage::WRITE);
+    // fs << "image" << image;  // 保存图像
+    // fs.release();  // 关闭文件
+    //////////////////////////////////////////////////////////////////////////////////
 
     std::string filename = folder_path + "/frame_" + std::to_string((*frame_count)++) + ".bmp";
     cv::imwrite(filename, filtered);
@@ -290,6 +347,7 @@ int main(int argc, char** argv) {
     clearFileIfExists("/home/mingtao/Gt_ws/gt_pose.txt");
     clearFileIfExists("/home/mingtao/Gt_ws/gt_twist.txt");
     clearFileIfExists("/home/mingtao/Gt_ws/Imu.txt");
+    clearFileIfExists("/home/mingtao/Gt_ws/gt_dog_pose.txt");
 
     try {
         rosbag::Bag bag;
@@ -303,7 +361,8 @@ int main(int argc, char** argv) {
             "/vrpn_client_node/Tracker0/accel",
             "/vrpn_client_node/Tracker0/pose",
             "/vrpn_client_node/Tracker0/twist",
-            "/imu"
+            "/imu",
+            "/vrpn_client_node/dog/pose"
         };
 
         rosbag::View view(bag, rosbag::TopicQuery(topics));

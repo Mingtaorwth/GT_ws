@@ -38,14 +38,14 @@ DataController::DataController(int id, char *sdk_path)
     sleep(1);
     // Here type your iic configuration path!
     std::string str_sdk_path(sdk_path);
-    std::string cfg_file_path = str_sdk_path + "tmc_cfg_files/para/750fps_8bit_opt_clvds1.csv";
+    std::string cfg_file_path = "/home/mingtao/libs/tianmouc_sdk/tmc_cfg_files/para/750fps_8bit_opt_clvds.csv";
     if (rod_interface == 0)
     {
         cfg_file_path = str_sdk_path + "tmc_cfg_files/lvds/1500fps_8bit.csv";
     }
     else
     {
-        cfg_file_path = str_sdk_path + "tmc_cfg_files/para/750fps_8bit_opt_clvds1.csv";
+        cfg_file_path = "/home/mingtao/libs/tianmouc_sdk/tmc_cfg_files/para/750fps_8bit_opt_clvds.csv";
         //"./C1_8bit_PARA_fixed_HCG_th1.csv";
     }
     if (!(access(cfg_file_path.c_str(), F_OK) == 0))
